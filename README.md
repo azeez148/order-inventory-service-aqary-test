@@ -21,6 +21,10 @@ After changing source, rebuild the API image. During load-test development in Po
 docker compose run --rm -v "${PWD}/loadtest:/srv/loadtest" api python loadtest/loadtest.py --base-url http://api:8000
 ```
 
+All four services have healthchecks; `docker compose up -d --build --wait` waits for startup. The API healthcheck covers database access; search indexing remains eventually consistent.
+
+To verify committed code from a fresh local clone, run `powershell -ExecutionPolicy Bypass -File scripts/cold_start.ps1`. It builds a unique Compose project with new PostgreSQL/Meilisearch volumes and random host ports, runs smoke/outbox checks, seeds and verifies the full bulk catalog, then runs the mixed load test. It deletes only its own temporary clone and service volumes, even on failure. Docker and Git must be available; cached image layers may be reused. This checks fresh startup and warmed load performance separately, not cold-request latency. Set `API_PORT` or `PGBOUNCER_PORT` to change normal development ports.
+
 ## Bulk fixture
 
 ```powershell

@@ -19,7 +19,12 @@ services:
     volumes:
       - ./infra/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./infra/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
-    ports: ["6432:5432"]
+    ports: ["${PGBOUNCER_PORT:-6432}:5432"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "shop", "-d", "shop"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   meilisearch:
     image: getmeili/meilisearch:v1.10
@@ -28,17 +33,29 @@ services:
       MEILI_ENV: development
       MEILI_NO_ANALYTICS: "true"
     volumes: [meili:/meili_data]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7700/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   api:
     build: .
-    depends_on: [pgbouncer, meilisearch]
+    depends_on:
+      pgbouncer: { condition: service_healthy }
+      meilisearch: { condition: service_healthy }
     environment:
       DATABASE_URL: postgresql+asyncpg://shop:shop@pgbouncer:5432/shop
       REPORTING_DATABASE_URL: postgresql+asyncpg://shop:shop@pgbouncer:5432/shop_reporting
       READ_DATABASE_URL: postgresql+asyncpg://shop:shop@pgbouncer:5432/shop_reads
       MEILI_URL: http://meilisearch:7700
       MEILI_MASTER_KEY: dev-master-key
-    ports: ["8000:8000"]
+    ports: ["${API_PORT:-8000}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
 
 volumes:
   pgdata:
