@@ -1,4 +1,4 @@
-ï»¿# Order & Inventory Service
+# Order & Inventory Service
 
 Async FastAPI API for product browsing/search, warehouse stock writes, orders and heavy reporting on one PostgreSQL database. Stack: SQLAlchemy async + asyncpg, PostgreSQL 16, PgBouncer and Meilisearch.
 
