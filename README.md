@@ -21,6 +21,16 @@ After changing source, rebuild the API image. During load-test development in Po
 docker compose run --rm -v "${PWD}/loadtest:/srv/loadtest" api python loadtest/loadtest.py --base-url http://api:8000
 ```
 
+## Bulk fixture
+
+```powershell
+docker compose run --rm api python -m scripts.bulk_seed
+```
+
+This adds 20,000 products, 100,000 historical orders, 100,000 order items and 20,000 outbox events using one atomic `INSERT ... SELECT generate_series` statement. It preserves existing data and uses unique SKUs; each rerun adds another batch. `--products` and `--orders` allow smaller fixtures. Stock 1000 represents remaining inventory after historical sales; the fixture bypasses the live order API. The outbox indexes the new catalog asynchronously. The existing CSV seed remains available for a small demo.
+
+After one bulk batch, `docker compose run --rm api python -m loadtest.catalog` verifies fixture counts, report totals and confirmed indexing. Pass matching counts if using a smaller fixture; the default expects one 20k/100k batch.
+
 ## API
 
 | Method/path | Purpose |

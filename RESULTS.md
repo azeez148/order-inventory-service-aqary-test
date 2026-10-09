@@ -26,3 +26,13 @@ Each phase sends 500 orders against stock 100, with 50 maximum in-flight orders,
 All reads, searches and reports returned 200, and every search result check passed. Mixed/baseline order p95 was 1.17x. All default gates passed, exit code 0. Phase wall time: 8.16 / 8.30 seconds. Order p95 including waiting for the concurrency window: 7708 / 7680 ms.
 
 These timings use explicit connection warm-up, an existing database and simulated report delay. They do not establish fresh-start latency or bulk-catalog performance.
+
+## Bulk fixture
+
+`docker compose run --rm api python -m scripts.bulk_seed` inserted 20,000 products, 100,000 orders, 100,000 order items and 20,000 outbox rows in 21.98 seconds, preserving existing data.
+
+`docker compose run --rm api python -m loadtest.catalog` passed:
+
+- Exact bulk product/order/item counts, matching order/item revenue and nonnegative stock.
+- Real sales aggregation without simulated delay agrees with database totals.
+- All bulk outbox rows processed after confirmed indexing, a bulk SKU searchable, and Meilisearch document count matching PostgreSQL.
