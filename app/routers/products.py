@@ -1,12 +1,12 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session, get_read_session
-from app.models import Product
+from app.models import Product, SearchOutbox
 from app.schemas import ProductCreate, ProductOut, ProductUpdate, StockAdjustment
-from app.search import SearchClient, reindex_all, safe_upsert
+from app.search import SearchClient, reindex_all
 
 router = APIRouter(tags=["products"])
 
@@ -18,19 +18,18 @@ def get_search(request: Request) -> SearchClient:
 @router.post("/products", response_model=ProductOut, status_code=status.HTTP_201_CREATED)
 async def create_product(
     payload: ProductCreate,
-    bg: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    search: SearchClient = Depends(get_search),
 ):
     product = Product(**payload.model_dump())
     session.add(product)
     try:
+        await session.flush()
+        session.add(SearchOutbox(product_id=product.id))
         await session.commit()
     except IntegrityError:
         await session.rollback()
         raise HTTPException(409, "SKU already exists")
     await session.refresh(product)
-    bg.add_task(safe_upsert, search, product)  # index only after the DB commit succeeded
     return product
 
 
@@ -66,18 +65,16 @@ async def get_product(product_id: int, session: AsyncSession = Depends(get_read_
 async def update_product(
     product_id: int,
     payload: ProductUpdate,
-    bg: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    search: SearchClient = Depends(get_search),
 ):
     product = await session.get(Product, product_id)
     if product is None:
         raise HTTPException(404, "Product not found")
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(product, k, v)
+    session.add(SearchOutbox(product_id=product.id))
     await session.commit()
     await session.refresh(product)
-    bg.add_task(safe_upsert, search, product)
     return product
 
 
@@ -98,6 +95,7 @@ async def adjust_stock(
         await session.rollback()
         exists = await session.get(Product, product_id)
         raise HTTPException(404 if exists is None else 409, "Product not found" if exists is None else "Stock would go negative")
+    session.add(SearchOutbox(product_id=product_id))
     await session.commit()
     return row
 

@@ -59,7 +59,17 @@ Asyncpg prepared-statement caching is disabled and statement names are unique fo
 
 Meilisearch indexes name, description and SKU, providing prefix matching, relevance and typo tolerance without SQL LIKE/ILIKE scans. Search returns IDs; one primary-key database query hydrates products, keeping stock and price fresh.
 
-Product creation/update submits documents in a background task after commit. Indexing is asynchronous and eventually consistent: a new or updated product may take a short time to appear. Startup resubmits products in batches; `/admin/reindex` repairs missed updates. Search failures return 503. Background updates can be lost if the process exits or Meilisearch is unavailable; a transactional outbox and tracking index task completion would improve reliability. The MVP deliberately keeps this trade-off small and explicit.
+Product creation, patches, stock adjustments and orders insert `search_outbox` rows in the same database transaction as the product change. A lifespan asyncio worker drains pending rows using `FOR UPDATE SKIP LOCKED`, submits current product documents, polls Meilisearch task completion, and marks rows processed only after success. Failures roll back acknowledgement and retry; shutdown awaits cancellation before closing resources. Delivery is at least once, and document upserts are safe to repeat.
+
+An advisory transaction lock serializes delivery and reindex batches across API processes, preventing snapshots from being submitted out of order. Transactions hold a connection while awaiting indexing (30-second task deadline); this is an intentional MVP trade-off. Startup resubmits existing products for compatibility with older databases; `/admin/reindex` also waits for task success. Search failures return 503. Stock and price are hydrated from PostgreSQL. In production, run the consumer separately or use CDC, and add outbox retention and monitoring.
+
+Focused outbox proof (stop the API consumer to make the failure test deterministic):
+
+```powershell
+docker compose stop api
+docker compose run --rm --no-deps api python -m loadtest.outbox
+docker compose start api
+```
 
 ## Verification and observed results
 

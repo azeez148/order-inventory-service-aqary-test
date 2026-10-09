@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Order, OrderItem, Product
+from app.models import Order, OrderItem, Product, SearchOutbox
 from app.schemas import OrderItemIn
 
 
@@ -54,6 +54,7 @@ async def place_order(session: AsyncSession, items: list[OrderItemIn]) -> Order:
                 exists = await session.scalar(select(Product.id).where(Product.id == pid))
                 raise (InsufficientStock(pid) if exists else ProductNotFound(pid))
             price = row[0]
+            session.add(SearchOutbox(product_id=pid))
             total += price * qty
             lines.append((pid, qty, price))
 
