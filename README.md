@@ -58,10 +58,10 @@ One asynchronous Uvicorn worker uses three independent SQLAlchemy pools and PgBo
 | Workload | App connections | PgBouncer alias/base server capacity | Checkout timeout |
 |---|---|---|---|
 | Orders/product/warehouse writes | 15 + 5 overflow | shop / 20 | 10 seconds |
-| Storefront reads/search hydration/order retrieval | 20, no overflow | shop_reads / 20 | 10 seconds |
+| Storefront reads/search hydration/order retrieval | 10, no overflow | shop_reads / 10 | 10 seconds |
 | Reports | 3, no overflow | shop_reporting / 4 | 60 seconds |
 
-PgBouncer additionally permits up to 5 reserve connections per pool after 3 seconds of waiting and limits client connections to 1000. These are development settings for one API instance; capacity must be reconsidered when adding instances. The read pool reserves 20 slots for the combined product-read and search-hydration workload (150 simultaneous probes in the load test). SQLAlchemy checkout exhaustion returns 503 with `Retry-After: 1`. Reports run in read-only transactions with a 30-second per-statement timeout. The longer reporting checkout timeout allows a finite burst of reports to queue.
+PgBouncer additionally permits up to 5 reserve connections per pool after 3 seconds of waiting and limits client connections to 1000. These are development settings for one API instance; capacity must be reconsidered when adding instances. SQLAlchemy checkout exhaustion returns 503 with `Retry-After: 1`. Reports run in read-only transactions with a 30-second per-statement timeout. The longer reporting checkout timeout allows a finite burst of reports to queue.
 
 Separate pools reserve connection capacity for reads and writes. They do not isolate PostgreSQL CPU, I/O, or database locks. Reads have their own pool because hot-product orders can fill a write pool with row-lock waiters. Async endpoints use async database and HTTP calls; awaiting I/O lets other requests progress.
 
@@ -90,6 +90,8 @@ docker compose start api
 The load test sends 500 one-unit orders for one product with 100 stock, 100 product reads and 50 searches in each phase, and five two-second reports in the mixed phase. Default maximum in-flight orders is **50**. Independent HTTP clients model independent tools and prevent reports from consuming a storefront client's HTTP connection slots. Search waits for its unique SKU to become indexed before timing, then requires the expected product, price and nonnegative stock in every search response. Before timing, the script explicitly warms write/read/reporting connections using health checks, product reads and zero-delay reports; `--cold` skips this warm-up (index convergence is still required).
 
 Acceptance targets chosen for this local exercise: order request p95 <= 5000 ms, product-read and search p95 <= 2000 ms, mixed/baseline order p95 <= 2x, exactly 100 successful and 400 rejected orders, final stock zero, and every report/read/search returning 200 with valid search results. Any failed gate gives exit code 1. Targets are configurable via `--order-p95-ms`, `--read-p95-ms`, `--search-p95-ms`, and `--max-slowdown`. Current results are in [RESULTS.md](RESULTS.md).
+
+Fresh-clone startup, smoke/outbox proof, the full bulk fixture, report totals and confirmed catalog indexing passed. With the bulk dataset, the combined load test **failed the absolute read latency target** (baseline p95 2063 ms against 2000 ms); stock correctness, all expected statuses/search results and order latency/isolation gates passed. A trial with 20 read slots did not improve results, so the original ten-slot pool is retained. The cold-start script intentionally propagates benchmark failures with exit code 1 after cleanup; passing functional startup does not mean every performance target passes. Keep these limits visible in a submission.
 
 Historical results before adding the outbox and mixed-load search, using stock 200 and 30 reports, with explicit warm-up, 50 in-flight orders and 10 reserved read connections:
 

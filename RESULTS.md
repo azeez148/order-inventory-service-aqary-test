@@ -43,4 +43,17 @@ Commit `211c2d3` built and started all four healthy services from a local clone 
 
 The subsequent load test, with ten reserved read connections and 50 in-flight orders, exited 1: phase A read p95 was 2063 ms, above the unchanged 2000 ms target. Phase B read/search p95 was 1707/1761 ms. Orders remained correct (100 successes, 400 conflicts, stock zero in both phases); order p95 was 2833/2511 ms and mixed/baseline slowdown was 0.89x.
 
-A diagnostic run at 25 in-flight orders on the existing bulk stack improved order p95 to 1280/1682 ms, but mixed read/search p95 was 2207/2189 ms and still failed. Reducing order concurrency alone did not establish the read/search target. This motivated increasing the matching application and PgBouncer read pools to 20; order concurrency, probe counts and all latency gates remain unchanged.
+A diagnostic run at 25 in-flight orders on the existing bulk stack improved order p95 to 1280/1682 ms, but mixed read/search p95 was 2207/2189 ms and still failed. Reducing order concurrency alone did not establish the read/search target. This motivated a trial with matching application and PgBouncer read pools of 20; order concurrency, probe counts and all latency gates were unchanged for the repeat fresh-clone run.
+
+## Repeat fresh-clone run: 20 read slots
+
+Commit `65e598f` again passed startup with all four services healthy on new volumes, smoke/outbox checks, exact bulk counts, real report totals and confirmed full catalog indexing. The bulk seed took 24.78 seconds.
+
+| Phase | Order p50 / p95 | Read p95 | Search p95 | Report p95 | Orders 201 / 409 | Final stock |
+|---|---|---|---|---|---|---|
+| A | 758 / 3430 ms | 2856 ms | 2205 ms | — | 100 / 400 | 0 |
+| B | 763 / 4000 ms | 2660 ms | 3128 ms | 5691 ms | 100 / 400 | 0 |
+
+All statuses, search result checks and oversell assertions passed; mixed/baseline order p95 was 1.17x. Absolute read/search latency gates failed, exit code 1. Wall time was 11.89/11.56 seconds; order p95 including the concurrency queue was 11340/11024 ms. The script correctly propagated failure and removed its own containers, network, fresh volumes and temporary checkout.
+
+Increasing pool size did not establish better performance on this host; the final configuration restores the original ten read slots. Functional startup and durable indexing are verified, but bulk-load read/search latency remains a limitation. Gates have not been relaxed. Both fresh runs used warmed benchmark connections after fixture indexing; cold-request latency is not claimed. Dependency image layers were cached. Further performance work is deferred rather than adding services or expanding this one-day scope.

@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://shop:shop@pgbouncer:5432/shop"
     reporting_database_url: str = "postgresql+asyncpg://shop:shop@pgbouncer:5432/shop_reporting"
     read_database_url: str = "postgresql+asyncpg://shop:shop@pgbouncer:5432/shop_reads"
-    read_pool_size: int = 20
+    read_pool_size: int = 10
 
     # App-side pools (client side of PgBouncer). Kept small: PgBouncer does the real pooling.
     oltp_pool_size: int = 15
