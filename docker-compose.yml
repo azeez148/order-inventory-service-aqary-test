@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop
+      POSTGRES_DB: shop
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - ./infra/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./infra/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    ports: ["6432:5432"]
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.10
+    environment:
+      MEILI_MASTER_KEY: dev-master-key
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    volumes: [meili:/meili_data]
+
+  api:
+    build: .
+    depends_on: [pgbouncer, meilisearch]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shop:shop@pgbouncer:5432/shop
+      REPORTING_DATABASE_URL: postgresql+asyncpg://shop:shop@pgbouncer:5432/shop_reporting
+      READ_DATABASE_URL: postgresql+asyncpg://shop:shop@pgbouncer:5432/shop_reads
+      MEILI_URL: http://meilisearch:7700
+      MEILI_MASTER_KEY: dev-master-key
+    ports: ["8000:8000"]
+
+volumes:
+  pgdata:
+  meili:
