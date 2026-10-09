@@ -36,3 +36,11 @@ These timings use explicit connection warm-up, an existing database and simulate
 - Exact bulk product/order/item counts, matching order/item revenue and nonnegative stock.
 - Real sales aggregation without simulated delay agrees with database totals.
 - All bulk outbox rows processed after confirmed indexing, a bulk SKU searchable, and Meilisearch document count matching PostgreSQL.
+
+## Initial fresh-clone run: read capacity limit
+
+Commit `211c2d3` built and started all four healthy services from a local clone with fresh PostgreSQL/Meilisearch volumes. Smoke and outbox checks passed, the bulk seed completed in 22.05 seconds, and catalog/report/index checks passed.
+
+The subsequent load test, with ten reserved read connections and 50 in-flight orders, exited 1: phase A read p95 was 2063 ms, above the unchanged 2000 ms target. Phase B read/search p95 was 1707/1761 ms. Orders remained correct (100 successes, 400 conflicts, stock zero in both phases); order p95 was 2833/2511 ms and mixed/baseline slowdown was 0.89x.
+
+A diagnostic run at 25 in-flight orders on the existing bulk stack improved order p95 to 1280/1682 ms, but mixed read/search p95 was 2207/2189 ms and still failed. Reducing order concurrency alone did not establish the read/search target. This motivated increasing the matching application and PgBouncer read pools to 20; order concurrency, probe counts and all latency gates remain unchanged.

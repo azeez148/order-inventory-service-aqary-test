@@ -58,10 +58,10 @@ One asynchronous Uvicorn worker uses three independent SQLAlchemy pools and PgBo
 | Workload | App connections | PgBouncer alias/base server capacity | Checkout timeout |
 |---|---|---|---|
 | Orders/product/warehouse writes | 15 + 5 overflow | shop / 20 | 10 seconds |
-| Storefront reads/search hydration/order retrieval | 10, no overflow | shop_reads / 10 | 10 seconds |
+| Storefront reads/search hydration/order retrieval | 20, no overflow | shop_reads / 20 | 10 seconds |
 | Reports | 3, no overflow | shop_reporting / 4 | 60 seconds |
 
-PgBouncer additionally permits up to 5 reserve connections per pool after 3 seconds of waiting and limits client connections to 1000. These are development settings for one API instance; capacity must be reconsidered when adding instances. SQLAlchemy checkout exhaustion returns 503 with `Retry-After: 1`. Reports run in read-only transactions with a 30-second per-statement timeout. The longer reporting checkout timeout allows a finite burst of reports to queue.
+PgBouncer additionally permits up to 5 reserve connections per pool after 3 seconds of waiting and limits client connections to 1000. These are development settings for one API instance; capacity must be reconsidered when adding instances. The read pool reserves 20 slots for the combined product-read and search-hydration workload (150 simultaneous probes in the load test). SQLAlchemy checkout exhaustion returns 503 with `Retry-After: 1`. Reports run in read-only transactions with a 30-second per-statement timeout. The longer reporting checkout timeout allows a finite burst of reports to queue.
 
 Separate pools reserve connection capacity for reads and writes. They do not isolate PostgreSQL CPU, I/O, or database locks. Reads have their own pool because hot-product orders can fill a write pool with row-lock waiters. Async endpoints use async database and HTTP calls; awaiting I/O lets other requests progress.
 
