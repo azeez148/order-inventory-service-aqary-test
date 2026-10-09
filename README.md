@@ -73,11 +73,11 @@ docker compose start api
 
 ## Verification and observed results
 
-The load test sends 500 one-unit orders for one product with 200 stock, 100 product reads in each phase, and 30 two-second reports in the mixed phase. Default maximum in-flight orders is **50**. Independent HTTP clients model independent tools and prevent reports from consuming a storefront client's HTTP connection slots. Before timing, it explicitly warms write/read/reporting connections using health checks, product reads and zero-delay reports; `--cold` skips this warm-up.
+The load test sends 500 one-unit orders for one product with 100 stock, 100 product reads and 50 searches in each phase, and five two-second reports in the mixed phase. Default maximum in-flight orders is **50**. Independent HTTP clients model independent tools and prevent reports from consuming a storefront client's HTTP connection slots. Search waits for its unique SKU to become indexed before timing, then requires the expected product, price and nonnegative stock in every search response. Before timing, the script explicitly warms write/read/reporting connections using health checks, product reads and zero-delay reports; `--cold` skips this warm-up (index convergence is still required).
 
-Acceptance targets chosen for this local exercise: order request p95 <= 5000 ms, product-read p95 <= 2000 ms, mixed/baseline order p95 <= 2x, exactly 200 successful and 300 rejected orders, final stock zero, and every report/read returning 200. Any failed gate gives exit code 1. Targets are configurable via `--order-p95-ms`, `--read-p95-ms`, and `--max-slowdown`.
+Acceptance targets chosen for this local exercise: order request p95 <= 5000 ms, product-read and search p95 <= 2000 ms, mixed/baseline order p95 <= 2x, exactly 100 successful and 400 rejected orders, final stock zero, and every report/read/search returning 200 with valid search results. Any failed gate gives exit code 1. Targets are configurable via `--order-p95-ms`, `--read-p95-ms`, `--search-p95-ms`, and `--max-slowdown`. Current results are in [RESULTS.md](RESULTS.md).
 
-Observed on the final local Docker Desktop development stack with explicit warm-up, 50 in-flight orders and 10 reserved read connections:
+Historical results before adding the outbox and mixed-load search, using stock 200 and 30 reports, with explicit warm-up, 50 in-flight orders and 10 reserved read connections:
 
 | Phase | Order p50 / p95 | Read p95 | Report p95 | Orders 201 / 409 | Final stock |
 |---|---|---|---|---|---|
@@ -92,7 +92,7 @@ An earlier stress run with five read connections and `--concurrency 200` preserv
 
 With the earlier five-connection read pool, a run without explicit warm-up failed the read target: baseline read p95 was 2159 ms (mixed read p95 822 ms). A further warmed run also missed the baseline read target at 2973 ms; this prompted reserving ten read connections for the storefront. Cold-start read responsiveness is not guaranteed by the final steady-state result; use `--cold` to measure it independently.
 
-The runtime smoke script verified concurrent multi-product orders (5 successes, 15 conflicts), matching order retrieval, rollback when a later product lacks stock, duplicate-line merging, name/description search and update synchronization, fresh price/stock, and the SQLAlchemy timeout handler returning 503. Observed name lookups took 28.7-37.3 ms on the small local dataset; search performance at a large catalog size or under mixed load has not been benchmarked.
+The runtime smoke script verifies concurrent multi-product orders (5 successes, 15 conflicts), matching order retrieval, rollback when a later product lacks stock, duplicate-line merging, name/description search and update synchronization, fresh price/stock, and the SQLAlchemy timeout handler returning 503. The outbox proof also checks transactional rollback, failure after task acceptance, and retry through confirmed real indexing.
 
 ## Assumptions and next steps
 
